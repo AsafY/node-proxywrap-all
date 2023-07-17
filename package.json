@@ -1,6 +1,6 @@
 {
     "name": "node-proxywrap-all",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "description": "Wraps node's Server interfaces to be compatible with the PROXY protocol v1, v2 and none",
     "main": "proxywrap.js",
     "engines": {"node": ">= 16.0.0"},
@@ -10,7 +10,7 @@
     },
     "repository": {
         "type": "git",
-        "url": "https://github.com/daguej/node-proxywrap"
+        "url": "https://github.com/AsafY/node-proxywrap-all"
     },
     "keywords": [
         "proxy",
