@@ -12,7 +12,7 @@ This module is especially useful if you need to get the client IP address when y
 
 In HTTP or HTTPS mode (aka SSL termination at ELB or NLB), the ELB inserts `X-Forwarded-For` headers for you.  However, in TCP mode, the ELB can't understand the underlying protocol, so you lose the client's IP address.  With the PROXY protocol and this module, you're able to retain the client IP address with any protocol.
 
-In order for this module to work, you must [enable the PROXY protocol on your ELB](http://docs.aws.amazon.com/ElasticLoadBalancing/latest/DeveloperGuide/enable-proxy-protocol.html) (or whatever proxy your app is behind).
+In order to receive the proxy header, you must [enable the PROXY protocol on your ELB](http://docs.aws.amazon.com/ElasticLoadBalancing/latest/DeveloperGuide/enable-proxy-protocol.html)/NLB (or whatever proxy your app is behind).
 
 Usage
 -----
