@@ -1,9 +1,9 @@
 {
-    "name": "proxywrap",
-    "version": "0.2.0",
+    "name": "node-proxywrap-all",
+    "version": "0.0.1",
     "description": "Wraps node's Server interfaces to be compatible with the PROXY protocol v1, v2 and none",
     "main": "proxywrap.js",
-    "engines": {"node": ">= 0.10.0"},
+    "engines": {"node": ">= 16.0.0"},
     "engineStrict": true,
     "scripts": {
         "test": "echo \"Error: no test specified\" && exit 1"
