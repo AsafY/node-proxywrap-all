@@ -1,18 +1,18 @@
 /*
  * node-proxywrap
- * 
+ *
  * Copyright (c) 2013, Josh Dague
  * All rights reserved.
- * 
+ *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met: 
- * 
+ * modification, are permitted provided that the following conditions are met:
+ *
  * 1. Redistributions of source code must retain the above copyright notice, this
- *    list of conditions and the following disclaimer. 
+ *    list of conditions and the following disclaimer.
  * 2. Redistributions in binary form must reproduce the above copyright notice,
  *    this list of conditions and the following disclaimer in the documentation
- *    and/or other materials provided with the distribution. 
- * 
+ *    and/or other materials provided with the distribution.
+ *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -25,8 +25,8 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-var util = require('util');
-//var legacy = !require('stream').Duplex;  // TODO: Support <= 0.8 streams interface
+const util = require('util');
+const ppv2 = require('proxy-protocol-js').V2ProxyProtocol;
 
 exports.defaults = {
 	strict: true
@@ -36,14 +36,14 @@ exports.defaults = {
 // `socket.remoteAddress` and `remotePort` work correctly when used with the
 // PROXY protocol (http://haproxy.1wt.eu/download/1.5/doc/proxy-protocol.txt)
 // strict option drops requests without proxy headers, enabled by default to match previous behavior, disable to allow both proxied and non-proxied requests
-exports.proxy = function(iface, options) {
-	var exports = {};
+exports.proxy = function (iFace, options) {
+	const exports = {};
 
 	options = options || {};
-	for (var k in module.exports.defaults) if (!(k in options)) options[k] = module.exports.defaults[k];
+	for (const k in module.exports.defaults) if (!(k in options)) options[k] = module.exports.defaults[k];
 
-	// copy iface's exports to myself
-	for (var k in iface) exports[k] = iface[k];
+	// copy iFace's exports to myself
+	for (const k in iFace) exports[k] = iFace[k];
 
 
 	function ProxiedServer(options, requestListener) {
@@ -54,124 +54,139 @@ exports.proxy = function(iface, options) {
 			options = null;
 		}
 
-		// call original constructor with correct argument order
-		if (options) iface.Server.call(this, options, requestListener);
-		else iface.Server.call(this, requestListener);
+		// iFace.Server *requires* an arity of 1; iFaces.Server needs 2
+		if (options) iFace.Server.call(this, options, requestListener);
+		else iFace.Server.call(this, requestListener);
 
-		// remove the connection listener attached by iface.Server and replace it with our own.
-		var cl = this.listeners('connection');
+		// remove the connection listener attached by iFace[s].Server and replace it with our own.
+		const cl = this.listeners('connection');
 		this.removeAllListeners('connection');
 		this.addListener('connection', connectionListener);
 
 		// add the old connection listeners to a custom event, which we'll fire after processing the PROXY header
-		for (var i = 0; i < cl.length; i++) {
+		for (let i = 0; i < cl.length; i++) {
 			this.addListener('proxiedConnection', cl[i]);
 		}
-
-
-
 	}
-	util.inherits(ProxiedServer, iface.Server);
 
-	exports.createServer = function(opts, requestListener) {
+	util.inherits(ProxiedServer, iFace.Server);
+
+	exports.createServer = function (opts, requestListener) {
 		return new ProxiedServer(opts, requestListener);
 	}
 
 	exports.Server = ProxiedServer;
 
 
-
 	function connectionListener(socket) {
-		var self = this, realEmit = socket.emit, history = [], protocolError = false;
+		const self = this, realEmit = socket.emit;
+		let history = [];
 
-		// TODO: Support <= 0.8 streams interface
-		//function ondata() {}
-		//if (legacy) socket.once('data', ondata);
-
-		// override the socket's event emitter so we can process data (and discard the PROXY protocol header) before the underlying Server gets it
-		socket.emit = function(event, data) {
+		// override the socket's event emitter, so we can process data (and discard the PROXY protocol header) before the underlying Server gets it
+		socket.emit = function (event, data) {
 			history.push(Array.prototype.slice.call(arguments));
-			/*if (event == 'data') {
-				console.log('got a data event :(');
-				socket.destroy();
-			} else*/ if (event == 'readable') {
+			if (event === 'readable') {
 				onReadable();
 			}
 		}
 
 		function restore() {
-			//if (legacy) socket.removeListener('data', ondata);
 			// restore normal socket functionality, and fire any events that were emitted while we had control of emit()
 			socket.emit = realEmit;
-			for (var i = 0; i < history.length; i++) {
+			for (let i = 0; i < history.length; i++) {
 				realEmit.apply(socket, history[i]);
-				if (history[i][0] == 'end' && socket.onend) socket.onend();
+				if (history[i][0] === 'end' && socket.onend) socket.onend();
 			}
 			history = null;
 		}
 
 		socket.on('readable', onReadable);
+		socket.on('clientError', e => {
+			console.log(e);
+		})
 
-		var header = '', buf = new Buffer(0);
+		const v2Header = Buffer.from([13, 10, 13, 10, 0, 13, 10, 81, 85, 73, 84, 10]);
+		let buf = new Buffer.from('');
+
 		function onReadable() {
-			var chunk;
+			let chunk, proxyVersion, connectionData, headerLength = 0;
 			while (null != (chunk = socket.read())) {
 				buf = Buffer.concat([buf, chunk]);
-				header += chunk.toString('ascii');
 
-				// if the first 5 bytes aren't PROXY, something's not right.
-				if (header.length >= 5 && header.substr(0, 5) != 'PROXY') {
-					protocolError = true;
-					if (options.strict) {
-						return socket.destroy('PROXY protocol error');
+				if (!proxyVersion && buf.length >= 12 && (buf.subarray(0, 12).compare(v2Header) === 0)) {
+					proxyVersion = 2;
+					const upperLengthByte = buf[14];
+					const lowerLengthByte = buf[15];
+					headerLength = (upperLengthByte << 8) + lowerLengthByte + 16;
+				} else if (!proxyVersion && buf.length >= 5 && buf.subarray(0, 5).toString('ascii') === 'PROXY') {
+					proxyVersion = 1;
+				} else if (buf.length >= 12) {
+					proxyVersion = -1;
+				} else {
+					continue;// continue reading
+				}
+
+				if (proxyVersion === 2) {
+					if (buf.length >= headerLength) {
+						const proxyData = ppv2.parse(buf.subarray(0, headerLength));
+						connectionData = {
+							sourceAddress: (proxyData.proxyAddress?.sourceAddress?.address || [0, 0, 0, 0]).join('.'),
+							sourcePort: proxyData.proxyAddress?.sourcePort
+						}
+					}
+				} else if (proxyVersion === 1) {
+					const crlf = buf.toString('ascii').indexOf('\r');
+					if (crlf > 0) {
+						headerLength = crlf + 2;
+						const header = buf.subarray(0, headerLength).toString('ascii').split(' ');
+						connectionData = {
+							sourceAddress: header[2],
+							sourcePort: parseInt(header[4], 10)
+						}
 					}
 				}
 
-				var crlf = header.indexOf('\r');
-				if (crlf > 0 || protocolError) {
-					socket.removeListener('readable', onReadable);
-					header = header.substr(0, crlf);
+				if (proxyVersion === -1 || connectionData) {
+					if (options.debug) {
+						console.log(`proxy version = ${proxyVersion}`);
+						console.log(JSON.stringify(connectionData || {}));
+						console.log(buf.subarray(headerLength, buf.length).toString('ascii'))
+					}
 
-					var hlen = header.length;
-					header = header.split(' ');
-	
-					if (!protocolError) {
+					if (connectionData) {
 						Object.defineProperty(socket, 'remoteAddress', {
 							enumerable: false,
 							configurable: true,
-							get: function() {
-								return header[2];
+							get: function () {
+								return connectionData.sourceAddress;
 							}
 						});
+
 						Object.defineProperty(socket, 'remotePort', {
 							enumerable: false,
 							configurable: true,
-							get: function() {
-								return parseInt(header[4], 10);
+							get: function () {
+								return connectionData.sourcePort || 0;
 							}
 						});
 					}
 
+					socket.removeListener('readable', onReadable);
 					// unshifting will fire the readable event
-					socket.emit = realEmit;
-					socket.unshift(buf.slice(protocolError ? 0 : crlf+2));
+					restore();
+					socket.unshift(buf.slice(headerLength));
 
 					self.emit('proxiedConnection', socket);
 
-					restore();
-
 					if (socket.ondata) {
-						var data = socket.read();
+						const data = socket.read();
 						if (data) socket.ondata(data, 0, data.length);
 					}
 
 					break;
-
 				}
-				else if (header.length > 107) return socket.destroy('PROXY protocol error'); // PROXY header too long
 			}
 		}
-
 	}
 
 	return exports;

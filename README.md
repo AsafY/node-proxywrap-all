@@ -1,23 +1,26 @@
-node-proxywrap
+node-proxywrap-all
 ==============
 
-This module wraps node's various `Server` interfaces so that they are compatible with the [PROXY protocol](http://haproxy.1wt.eu/download/1.5/doc/proxy-protocol.txt).  It automatically parses the PROXY headers and resets `socket.remoteAddress` and `socket.remotePort` so that they have the correct values.
+This module wraps node's various `Server` interfaces so that they are compatible with the [PROXY protocol](https://www.haproxy.org/download/1.8/doc/proxy-protocol.txt).  It automatically parses the PROXY headers and resets `socket.remoteAddress` and `socket.remotePort` so that they have the correct values.
+supports V1, V2 proxy protocols and will also work when no header exists.
+The module is based on the original "proxywrap"(https://github.com/daguej/node-proxywrap) project made by Josh Dague.
+v2 parsing is done by using proxy-protocol-js by moznion.
 
-    npm install proxywrap
+    npm install node-proxywrap-all
 
 This module is especially useful if you need to get the client IP address when you're behind an AWS ELB in TCP mode.
 
-In HTTP or HTTPS mode (aka SSL termination at ELB), the ELB inserts `X-Forwarded-For` headers for you.  However, in TCP mode, the ELB can't understand the underlying protocol, so you lose the client's IP address.  With the PROXY protocol and this module, you're able to retain the client IP address with any protocol.
+In HTTP or HTTPS mode (aka SSL termination at ELB or NLB), the ELB inserts `X-Forwarded-For` headers for you.  However, in TCP mode, the ELB can't understand the underlying protocol, so you lose the client's IP address.  With the PROXY protocol and this module, you're able to retain the client IP address with any protocol.
 
 In order for this module to work, you must [enable the PROXY protocol on your ELB](http://docs.aws.amazon.com/ElasticLoadBalancing/latest/DeveloperGuide/enable-proxy-protocol.html) (or whatever proxy your app is behind).
 
 Usage
 -----
 
-proxywrap is a drop-in replacement.  Here's a simple Express app:
+node-proxywrap-all is a drop-in replacement.  Here's a simple Express app:
 
     var http = require('http')
-        , proxiedHttp = require('proxywrap').proxy(http)
+        , proxiedHttp = require('node-proxywrap-all').proxy(http)
         , express = require('express')
         , app = express()
         , srv = proxiedHttp.createServer(app); // instead of http.createServer(app)
@@ -36,8 +39,6 @@ You can do the same with `net` (raw TCP streams), `https`, and `spdy`.  It will 
 
     var proxiedSpdy = require('proxywrap').proxy(require('spdy').server);
 
-**Warning:** By default, *all* traffic to your proxied server MUST use the PROXY protocol.  If the first five bytes received aren't `PROXY`, the connection will be dropped.  Obviously, the node server accepting PROXY connections should not be exposed directly to the internet; only the proxy (whether ELB, HAProxy, or something else) should be able to connect to node.
-
 API
 ---
 
@@ -47,4 +48,4 @@ Wraps something that inherits from the `net` module, exposing a `Server` and `cr
 
 Options:
 
-- `strict` (default `true`): Incoming connections MUST use the PROXY protocol.  If the first five bytes received aren't `PROXY`, the connection will be dropped.  Disabling this option will allow connections that don't use the PROXY protocol (so long as the first bytes sent aren't `PROXY`).  Disabling this option poses a security risk; it should be enabled in production.
+- `debug` (default `false`): will print parsing debug info to console.
