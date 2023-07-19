@@ -45,6 +45,14 @@ exports.proxy = function (iFace, options) {
 	// copy iFace's exports to myself
 	for (const k in iFace) exports[k] = iFace[k];
 
+	let _openSockets = 0;
+	Object.defineProperty(exports, 'openSockets', {
+		enumerable: false,
+		configurable: true,
+		get: function () {
+			return _openSockets;
+		}
+	});
 
 	function ProxiedServer(options, requestListener) {
 		if (!(this instanceof ProxiedServer)) return new ProxiedServer(options, requestListener);
@@ -67,6 +75,8 @@ exports.proxy = function (iFace, options) {
 		for (let i = 0; i < cl.length; i++) {
 			this.addListener('proxiedConnection', cl[i]);
 		}
+
+		_openSockets = 0;
 	}
 
 	util.inherits(ProxiedServer, iFace.Server);
@@ -81,6 +91,11 @@ exports.proxy = function (iFace, options) {
 	function connectionListener(socket) {
 		const self = this, realEmit = socket.emit;
 		let history = [];
+
+		_openSockets++;
+		socket.on('close', () => {
+			_openSockets--;
+		});
 
 		// override the socket's event emitter, so we can process data (and discard the PROXY protocol header) before the underlying Server gets it
 		socket.emit = function (event, data) {
@@ -100,10 +115,8 @@ exports.proxy = function (iFace, options) {
 			history = null;
 		}
 
+
 		socket.on('readable', onReadable);
-		socket.on('clientError', e => {
-			console.log(e);
-		})
 
 		const v2Header = Buffer.from([13, 10, 13, 10, 0, 13, 10, 81, 85, 73, 84, 10]);
 		let buf = new Buffer.from('');
