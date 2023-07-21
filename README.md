@@ -19,7 +19,7 @@ Usage
 
 node-proxywrap-all is a drop-in replacement.  Here's a simple Express app:
 
-    var http = require('http')
+    var http = require('http', {timeout: 5000})
         , proxiedHttp = require('node-proxywrap-all').proxy(http)
         , express = require('express')
         , app = express()
@@ -49,3 +49,6 @@ Wraps something that inherits from the `net` module, exposing a `Server` and `cr
 Options:
 
 - `debug` (default `false`): will print parsing debug info to console.
+- `timeout` (default 5000) prevent DOS attacks and bad clients not
+              closing sockets properly. 
+              this is mainly used for node servers connected directly through NLB's.

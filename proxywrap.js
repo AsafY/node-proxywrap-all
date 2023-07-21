@@ -25,6 +25,11 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*node-proxywrap-all
+* by Asaf Yarkoni 2023
+* https://github.com/AsafY/node-proxywrap-all
+* */
+
 const util = require('util');
 const ppv2 = require('proxy-protocol-js').V2ProxyProtocol;
 
@@ -96,6 +101,20 @@ exports.proxy = function (iFace, options) {
 		socket.on('close', () => {
 			_openSockets--;
 		});
+
+		/**
+		 * on node 18+ there is a default timout setting to prevent DOS attacks.
+		 * since we hijack the socket events this setting only comes into effect after we return control over to the server.
+		 * so if a client connects and doesn't send anything we are still exposed to malicious attacks.
+		 * if data was already received then we should ignore the emitted timeout and let the calling server take care of it.
+		 * @type {*|number}
+		 */
+		const timeOut = options.timeout || 5000;
+		let _timeoutTimer = setTimeout(() => {
+			if (!_timeoutTimer) return;// just a sanity check.
+			socket.destroy();
+			_openSockets--;
+		}, timeOut);
 
 		// override the socket's event emitter, so we can process data (and discard the PROXY protocol header) before the underlying Server gets it
 		socket.emit = function (event, data) {
@@ -199,6 +218,9 @@ exports.proxy = function (iFace, options) {
 					break;
 				}
 			}
+
+			clearTimeout(_timeoutTimer);//clear our timout timer.
+			_timeoutTimer = null;
 		}
 	}
 
