@@ -19,8 +19,8 @@ Usage
 
 node-proxywrap-all is a drop-in replacement.  Here's a simple Express app:
 
-    var http = require('http', {timeout: 5000})
-        , proxiedHttp = require('node-proxywrap-all').proxy(http)
+    var http = require('http')
+        , proxiedHttp = require('node-proxywrap-all').proxy(http, {timeout: 5000})
         , express = require('express')
         , app = express()
         , srv = proxiedHttp.createServer(app); // instead of http.createServer(app)
